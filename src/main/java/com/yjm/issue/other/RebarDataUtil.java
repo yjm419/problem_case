@@ -14,121 +14,170 @@ import java.util.stream.Collectors;
 public class RebarDataUtil {
 
     private static Map<String,Double> arrivalWeightMap = new HashMap();
-
     private static  Map<String,Double> consumeDiffMap = new HashMap();
     private static  Map<String,Double> consumeWeightObjMap = new HashMap();
     private static  Map<String,Double> inventoryUsableMap = new HashMap();
     private static  Map<String,Double> testWeightMap = new HashMap();
-
     private static Map<String,String> dateMap = new HashMap();
-
     private static SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
-    public static Map JsonData(String s){
+    public static String JsonData(String s){
         Map map = JSON.parseObject(s, Map.class);
 
-        Map statStockJsonMap = JSON.parseObject(map.get("statStock").toString(), Map.class);
+        List<Map> newMap = new ArrayList<>();
+        List<Map> categoryArrivedStats = JSON.parseArray(map.get("categoryArrivedStat").toString(), Map.class);
+        categoryArrivedStats = categoryArrivedStats.stream()
+                .sorted(Comparator.comparing(item -> Double.parseDouble(item.get("totalWeight").toString()),Comparator.reverseOrder()))
+                .collect(Collectors.toList());
+        if (categoryArrivedStats.size()>4){
+            Map otherMap = new HashMap<>();
+            otherMap.put("category","其他");
+            otherMap.put("totalWeight",0.0);
+            categoryArrivedStats.stream().limit(4).forEach(item->{
+                newMap.add(item);
+            });
+            categoryArrivedStats.stream().skip(4).forEach(item->{
+                double coun = Double.parseDouble(otherMap.get("totalWeight").toString()) + Double.parseDouble(item.get("totalWeight").toString());
+                otherMap.put("totalWeight",coun);
 
-        // 到货重量
-        List<Double> arrivalWeightListList = JSON.parseArray(statStockJsonMap.get("arrivalWeightList").toString(), Double.class);
-        // 总验铁
-        List<Double> testWeightList = JSON.parseArray(statStockJsonMap.get("testWeightList").toString(), Double.class);
-        // 快照日期序列
-        List<String> dateList = JSON.parseArray(statStockJsonMap.get("dateList").toString(), String.class);
+            });
+            newMap.add(otherMap);
+
+        }
+        map.put("categoryArrivedStat",newMap);
 
 
-        // 两次盘点之间的消耗差
-        List<String> consumeDiffs = JSON.parseArray(statStockJsonMap.get("consumeDiffList").toString(), String.class);
-        // 基于盘点日期的消耗量
-        List<String> consumeWeights = JSON.parseArray(statStockJsonMap.get("consumeWeightObjList").toString(), String.class);
-        // 库存可用
-        List<String> inventoryUsables = JSON.parseArray(statStockJsonMap.get("inventoryUsableList").toString(), String.class);
 
-        disposeJsonList(consumeWeights,consumeDiffMap);
-        disposeJsonList(consumeDiffs,consumeWeightObjMap);
-        disposeJsonList(inventoryUsables,inventoryUsableMap);
-        disposeCount(dateList,testWeightList,arrivalWeightListList);
+        List<Map> newMap1 = new ArrayList<>();
+        List<Map> predictStats = JSON.parseArray(map.get("predictStat").toString(), Map.class);
 
-        statStockJsonMap.put("consumeDiffList", Arrays.toString(consumeDiffMap.keySet().stream().map(key -> "["+key + "," + consumeDiffMap.get(key)+"]").toArray(String[]::new)));
-        statStockJsonMap.put("consumeWeightObjList", Arrays.toString(consumeWeightObjMap.keySet().stream().map(key -> "["+key + "," + consumeWeightObjMap.get(key)+"]").toArray(String[]::new)));
-        statStockJsonMap.put("inventoryUsableList", Arrays.toString(inventoryUsableMap.keySet().stream().map(key -> "["+key + "," + inventoryUsableMap.get(key)+"]").toArray(String[]::new)));
-        statStockJsonMap.put("arrivalWeightList", Arrays.toString(arrivalWeightMap.keySet().stream().map(key -> arrivalWeightMap.get(key)).toArray(Double[]::new)));
-        statStockJsonMap.put("testWeightList", Arrays.toString(testWeightMap.keySet().stream().map(key -> testWeightMap.get(key)).toArray(Double[]::new)));
-        statStockJsonMap.put("dateList", Arrays.toString(dateMap.keySet().stream().map(key -> dateMap.get(key)).toArray(String[]::new)));
-        map.put("statStock",statStockJsonMap);
-        System.out.println("map后--->"+map);
-        System.out.println("Map的statStock后--->"+map.get("statStock"));
-        return map;
-    }
+        predictStats = predictStats.stream()
+                .sorted(Comparator.comparing(item -> Double.parseDouble(item.get("inventoryUsable").toString()),Comparator.reverseOrder()))
+                .collect(Collectors.toList());
 
-    private static void disposeJsonList(List<String> sourceList,Map<String,Double> map){
-        List<List> targetList = new ArrayList<>();
-        sourceList.stream().forEach(item->{
-            String replace = item.replace("[", "").replace("]", "").replace("\"","");
-            targetList.add(Arrays.asList(replace.substring(0,replace.indexOf(",")),replace.substring(replace.indexOf(",")+1,replace.length())));
+        if (predictStats.size()>4){
+            Map otherMap = new HashMap<>();
+            otherMap.put("category","其他");
+            otherMap.put("inventoryUsable",0.0);
+            predictStats.stream().limit(4).forEach(item->{
+                newMap.add(item);
+            });
+            predictStats.stream().skip(4).forEach(item->{
+                double coun = Double.parseDouble(otherMap.get("inventoryUsable").toString()) + Double.parseDouble(item.get("inventoryUsable").toString());
+                otherMap.put("inventoryUsable",coun);
+
+            });
+            newMap1.add(otherMap);
+
+        }
+        map.put("predictStatCount",newMap1);
+
+
+        Map yMap = JSON.parseObject(map.get("statStock").toString(), Map.class);
+        Calendar calendar = Calendar.getInstance();
+        yMap.forEach((key,value)-> {
+            Map rebarJsonMap = JSON.parseObject(yMap.get(key).toString(), Map.class);
+            List<Double> arrivalWeightListList = JSON.parseArray(rebarJsonMap.get("arrivalWeightList").toString(), Double.class);
+            List<Double> testWeightList = JSON.parseArray(rebarJsonMap.get("testWeightList").toString(), Double.class);
+            List<String> dateList = JSON.parseArray(rebarJsonMap.get("dateList").toString(), String.class);
+            for (int i = 0; i < dateList.size(); i++) {
+                Date date = null;
+                try {
+                    date = dateFormat.parse(dateList.get(i));
+                } catch (ParseException e) {
+                    throw new RuntimeException(e);
+                }
+                calendar.setTime(date);
+                String date1 = calendar.get(Calendar.YEAR) +"-"+ (calendar.get(Calendar.MONTH)+1);
+                arrivalWeightMap.put(date1,0.0);
+                testWeightMap.put(date1,0.0);
+                dateMap.put(date1,date1);
+            }
+
+            for (int i = 0; i < dateList.size(); i++) {
+                Date date = null;
+                try {
+                    date = dateFormat.parse(dateList.get(i));
+                } catch (ParseException e) {
+                    throw new RuntimeException(e);
+                }
+                calendar.setTime(date);
+                String data1 = calendar.get(Calendar.YEAR) +"-"+ (calendar.get(Calendar.MONTH)+1);
+
+                arrivalWeightMap.put(data1,arrivalWeightMap.get(data1)+arrivalWeightListList.get(i));
+                testWeightMap.put(data1,testWeightMap.get(data1)+testWeightList.get(i));
+            }
+
+            rebarJsonMap.forEach((k,v)->{
+
+                if (k.equals("consumeDiffList")||k.equals("consumeWeightObjList")||k.equals("inventoryUsableList")){
+
+                    List<String> targets = JSON.parseArray(rebarJsonMap.get(k).toString(), String.class);
+                    List<List> targetsList = new ArrayList<>();
+                    targets.stream().forEach(item->{
+                        String replace = item.replace("[", "").replace("]", "").replace("\"","");
+                        targetsList.add(Arrays.asList(replace.substring(0,replace.indexOf(",")),replace.substring(replace.indexOf(",")+1,replace.length())));
+                    });
+                    List timeList = targetsList.stream().map(list -> list.get(0)).collect(Collectors.toList());
+                    List amountList = targetsList.stream().map(list -> list.get(1)).collect(Collectors.toList());
+
+
+                    for (int i = 0; i < timeList.size(); i++) {
+                        Date date = null;
+                        try {
+                            date = dateFormat.parse(timeList.get(i).toString());
+                        } catch (ParseException e) {
+                            throw new RuntimeException(e);
+                        }
+                        calendar.setTime(date);
+                        String date1 = calendar.get(Calendar.YEAR) +"-"+ (calendar.get(Calendar.MONTH)+1);
+                        if (k.equals("consumeDiffList")){
+                            consumeDiffMap.put(date1,0.0);
+                        }
+                        if (k.equals("consumeWeightObjList")){
+                            consumeWeightObjMap.put(date1,0.0);
+                        }
+                        if (k.equals("inventoryUsableList")){
+                            inventoryUsableMap.put(date1,0.0);
+                        }
+
+                    }
+
+                    for (int i = 0; i < timeList.size(); i++) {
+                        Date date = null;
+                        try {
+                            date = dateFormat.parse(timeList.get(i).toString());
+                        } catch (ParseException e) {
+                            throw new RuntimeException(e);
+                        }
+                        calendar.setTime(date);
+                        String date1 = calendar.get(Calendar.YEAR) +"-"+ (calendar.get(Calendar.MONTH)+1);
+                        if (k.equals("consumeDiffList")){
+                            consumeDiffMap.put(date1,consumeDiffMap.get(date1)+Double.parseDouble((String) amountList.get(i)));
+                        }
+                        if (k.equals("consumeWeightObjList")){
+                            consumeWeightObjMap.put(date1,consumeWeightObjMap.get(date1)+Double.parseDouble((String) amountList.get(i)));
+                        }
+                        if (k.equals("inventoryUsableList")){
+                            inventoryUsableMap.put(date1,inventoryUsableMap.get(date1)+Double.parseDouble((String) amountList.get(i)));
+                        }
+                    }
+                }
+            });
+            rebarJsonMap.put("consumeDiffList", consumeDiffMap.keySet().stream().map(key1 -> "["+key1 + "," + consumeDiffMap.get(key1)+"]").toArray(String[]::new));
+            rebarJsonMap.put("consumeWeightObjList", consumeWeightObjMap.keySet().stream().map(key1 -> "["+key1 + "," + consumeWeightObjMap.get(key1)+"]").toArray(String[]::new));
+            rebarJsonMap.put("inventoryUsableList", inventoryUsableMap.keySet().stream().map(key1 -> "["+key1 + "," + inventoryUsableMap.get(key1)+"]").toArray(String[]::new));
+            rebarJsonMap.put("arrivalWeightList", arrivalWeightMap.keySet().stream().map(key1 -> arrivalWeightMap.get(key1)).toArray(Double[]::new));
+            rebarJsonMap.put("testWeightList", testWeightMap.keySet().stream().map(key1 -> testWeightMap.get(key1)).toArray(Double[]::new));
+            rebarJsonMap.put("dateList", dateMap.keySet().stream().map(key1 -> dateMap.get(key1)).toArray(String[]::new));
+            yMap.put(key, rebarJsonMap);
+            System.out.println("rebarJsonMap--->"+JSON.parse(JSON.toJSONString(rebarJsonMap)));
+
         });
-        List timeList = targetList.stream().map(list -> list.get(0)).collect(Collectors.toList());
-        List countList = targetList.stream().map(list -> list.get(1)).collect(Collectors.toList());
-        disposeList(timeList,countList,map);
 
 
-    }
+        map.put("statStock",yMap);
 
-    private static void  disposeList(List timeList,List countList,Map<String,Double> map)  {
-        Calendar calendar = Calendar.getInstance();
-        for (int i = 0; i < timeList.size(); i++) {
-            Date date = null;
-            try {
-                date = dateFormat.parse(timeList.get(i).toString());
-            } catch (ParseException e) {
-                throw new RuntimeException(e);
-            }
-            calendar.setTime(date);
-            String date1 = calendar.get(Calendar.YEAR) +"-"+ (calendar.get(Calendar.MONTH)+1);
-            map.put(date1,0.0);
-        }
+        return JSON.toJSONString(map);
 
-        for (int i = 0; i < timeList.size(); i++) {
-            Date date = null;
-            try {
-                date = dateFormat.parse(timeList.get(i).toString());
-            } catch (ParseException e) {
-                throw new RuntimeException(e);
-            }
-            calendar.setTime(date);
-            String date1 = calendar.get(Calendar.YEAR) +"-"+ (calendar.get(Calendar.MONTH)+1);
-            map.put(date1,map.get(date1)+Double.parseDouble((String) countList.get(i)));
-        }
-
-    }
-
-    private static void disposeCount(List<String> dateList,List<Double> testWeightList,List<Double> arrivalWeightListList){
-        Calendar calendar = Calendar.getInstance();
-        for (int i = 0; i < dateList.size(); i++) {
-            Date date = null;
-            try {
-                date = dateFormat.parse(dateList.get(i));
-            } catch (ParseException e) {
-                throw new RuntimeException(e);
-            }
-            calendar.setTime(date);
-            String date1 = calendar.get(Calendar.YEAR) +"-"+ (calendar.get(Calendar.MONTH)+1);
-            arrivalWeightMap.put(date1,0.0);
-            testWeightMap.put(date1,0.0);
-            dateMap.put(date1,date1);
-        }
-
-        for (int i = 0; i < dateList.size(); i++) {
-            Date date = null;
-            try {
-                date = dateFormat.parse(dateList.get(i));
-            } catch (ParseException e) {
-                throw new RuntimeException(e);
-            }
-            calendar.setTime(date);
-            String data1 = calendar.get(Calendar.YEAR) +"-"+ (calendar.get(Calendar.MONTH)+1);
-
-            arrivalWeightMap.put(data1,arrivalWeightMap.get(data1)+arrivalWeightListList.get(i));
-            testWeightMap.put(data1,testWeightMap.get(data1)+testWeightList.get(i));
-        }
     }
 }
